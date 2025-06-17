@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Fenwick Tree Visualizer</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: linear-gradient(to right, #f8f9fa, #e9ecef);
+      margin: 0;
+      padding: 40px;
+      color: #333;
+    }
+    .container {
+      max-width: 900px;
+      margin: auto;
+      background: white;
+      border-radius: 10px;
+      padding: 30px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 30px;
+      color: #007bff;
+    }
+    .input-group {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    input {
+      padding: 8px;
+      flex: 1;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+    button {
+      background-color: #007bff;
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    #bitArray, #output, #stepExplanation {
+      margin-top: 20px;
+      padding: 15px;
+      background: #f1f3f5;
+      border-radius: 8px;
+    }
+    #bitArray span {
+      display: inline-block;
+      background: #0d6efd;
+      color: white;
+      padding: 10px;
+      margin: 5px;
+      border-radius: 6px;
+      font-weight: bold;
+      min-width: 30px;
+      text-align: center;
+    }
+    canvas {
+      margin-top: 30px;
+    }
+    #treeVisualization {
+      margin-top: 30px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Fenwick Tree (BIT) Visualizer</h1>
+
+    <div class="input-group">
+      <label>Initial array:</label>
+      <input id="arrayInput" placeholder="e.g. 3,2,-1,6,5,4,-3">
+      <button onclick="initialize()">Initialize</button>
+    </div>
+
+    <div class="input-group">
+      <label>Update index:</label>
+      <input id="updateIndex" type="number" min="1">
+      <label>by value:</label>
+      <input id="updateValue" type="number">
+      <button onclick="updateBIT()">Update</button>
+    </div>
+
+    <div class="input-group">
+      <label>Prefix sum to index:</label>
+      <input id="queryIndex" type="number" min="1">
+      <button onclick="queryBIT()">Query</button>
+    </div>
+
+    <div class="input-group">
+      <label>Range sum from index:</label>
+      <input id="rangeLeft" type="number" min="1">
+      <label>to</label>
+      <input id="rangeRight" type="number" min="1">
+      <button onclick="rangeQueryBIT()">Range Query</button>
+    </div>
+
+    <div class="input-group">
+      <label>Set value at index:</label>
+      <input id="pointIndex" type="number" min="1">
+      <label>to</label>
+      <input id="pointValue" type="number">
+      <button onclick="pointUpdateBIT()">Point Update</button>
+    </div>
+
+    <div id="output">Output appears here...</div>
+    <div id="bitArray">BIT Array displayed here...</div>
+    <div id="stepExplanation">Step-by-step explanation will appear here...</div>
+
+    <div id="treeVisualization"></div>
+    <canvas id="bitChart" height="120"></canvas>
+  </div>
+
+  <script>
+    let a = [], bit = [], n = 0;
+    let chart;
+
+    function initialize() {
+      const input = document.getElementById("arrayInput").value;
+      a = input.split(',').map(Number);
+      n = a.length;
+      bit = Array(n + 1).fill(0);
+
+      for (let i = 0; i < n; i++) {
+        internalUpdate(i + 1, a[i]);
+      }
+      document.getElementById("output").innerText = "Initialized!";
+      renderBIT();
+      renderTree();
+    }
+
+    function internalUpdate(i, delta) {
+      while (i <= n) {
+        bit[i] += delta;
+        i += i & -i;
+      }
+    }
+
+    function updateBIT() {
+      const i = parseInt(document.getElementById("updateIndex").value);
+      const x = parseInt(document.getElementById("updateValue").value);
+      if (i < 1 || i > n) return;
+      a[i - 1] += x;
+      internalUpdate(i, x);
+      document.getElementById("output").innerText = `Updated index ${i} by ${x}`;
+      renderBIT();
+      renderTree();
+    }
+
+    function queryBIT() {
+      let i = parseInt(document.getElementById("queryIndex").value);
+      if (i < 1 || i > n) return;
+      let sum = 0;
+      const steps = [];
+      while (i > 0) {
+        steps.push({ i, val: bit[i], range: getRange(i) });
+        sum += bit[i];
+        i -= i & -i;
+      }
+      document.getElementById("output").innerText = `Prefix sum: ${sum}`;
+      renderStepExplanation(steps, "Prefix Sum");
+      renderTree(steps); // Pass the steps to render the tree with highlighted ranges
+    }
+
+    function prefixSum(i) {
+      let sum = 0;
+      while (i > 0) {
+        sum += bit[i];
+        i -= i & -i;
+      }
+      return sum;
+    }
+
+    function rangeQueryBIT() {
+      const l = parseInt(document.getElementById("rangeLeft").value);
+      const r = parseInt(document.getElementById("rangeRight").value);
+      if (l < 1 || r > n || l > r) return;
+
+      // Calculate range sum using prefix sums
+      const sum = prefixSum(r) - prefixSum(l - 1); 
+      document.getElementById("output").innerText = `Range sum [${l}, ${r}]: ${sum}`;
+      
+      const steps = [];
+      // Collect the BIT indices that participate in the range sum calculation
+      for (let i = r; i > 0; i -= i & -i) {
+        steps.push({ i, val: bit[i], range: getRange(i) });
+      }
+      for (let i = l - 1; i > 0; i -= i & -i) {
+        steps.push({ i, val: bit[i], range: getRange(i) });
+      }
+      
+      renderStepExplanation(steps, "Range Sum");
+      renderTree(steps); // Pass the steps to render the tree with highlighted ranges
+    }
+
+    function pointUpdateBIT() {
+      const i = parseInt(document.getElementById("pointIndex").value);
+      const newValue = parseInt(document.getElementById("pointValue").value);
+      if (i < 1 || i > n) return;
+      const delta = newValue - a[i - 1];
+      a[i - 1] = newValue;
+      internalUpdate(i, delta);
+      document.getElementById("output").innerText = `Set index ${i} to ${newValue}`;
+      renderBIT();
+      renderTree();
+    }
+
+    function renderBIT() {
+      const bitDiv = document.getElementById("bitArray");
+      bitDiv.innerHTML = '<strong>BIT:</strong><br>';
+      for (let i = 1; i <= n; i++) {
+        bitDiv.innerHTML += `<span>${bit[i]}</span>`;
+      }
+      drawChart();
+    }
+
+    function drawChart() {
+      const ctx = document.getElementById('bitChart').getContext('2d');
+      if (chart) chart.destroy();
+      chart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: Array.from({ length: n }, (_, i) => i + 1),
+          datasets: [{
+            label: 'BIT Value',
+            data: bit.slice(1),
+            backgroundColor: (ctx) => {
+              const index = ctx.dataIndex + 1;
+              return selectedIndices.includes(index) ? 'rgba(255, 99, 132, 0.6)' : 'rgba(13,110,253,0.6)';
+            },
+            borderColor: '#0d6efd',
+            borderWidth: 1
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { display: false }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: { precision: 0 }
+            }
+          },
+          onClick: (event, elements) => {
+            if (elements.length > 0) {
+              const index = elements[0].index + 1;
+              alert(`You clicked on BIT[${index}]`);
+            }
+          }
+        }
+      });
+    }
+
+    let selectedIndices = [];
+
+    function renderTree(steps = []) {
+      const svg = d3.select("#treeVisualization");
+      svg.selectAll("*").remove(); // Clear previous tree
+
+      const treeData = [];
+      for (let i = 1; i <= n; i++) {
+        treeData.push({ id: i, value: bit[i], highlighted: steps.some(step => step.i === i) });
+      }
+
+      const width = 500;
+      const height = 200;
+      const radius = 20;
+
+      const treeLayout = d3.tree().size([width, height]);
+      const root = d3.hierarchy({ children: treeData });
+
+      const treeNodes = treeLayout(root).descendants();
+      const links = treeLayout(root).links();
+
+      svg.attr("width", width).attr("height", height);
+
+      svg.selectAll("line")
+        .data(links)
+        .enter()
+        .append("line")
+        .attr("x1", d => d.source.x)
+        .attr("y1", d => d.source.y)
+        .attr("x2", d => d.target.x)
+        .attr("y2", d => d.target.y)
+        .attr("stroke", "#ccc");
+
+      svg.selectAll("circle")
+        .data(treeNodes)
+        .enter()
+        .append("circle")
+        .attr("cx", d => d.x)
+        .attr("cy", d => d.y)
+        .attr("r", radius)
+        .attr("fill", d => d.data.highlighted ? "#ff6384" : "#0d6efd");
+
+      svg.selectAll("text")
+        .data(treeNodes)
+        .enter()
+        .append("text")
+        .attr("x", d => d.x)
+        .attr("y", d => d.y + 4)
+        .attr("text-anchor", "middle")
+        .style("fill", "white")
+        .text(d => d.data.value);
+    }
+
+    function renderStepExplanation(steps, queryType) {
+    const explanationDiv = document.getElementById("stepExplanation");
+    explanationDiv.innerHTML = `<strong>Step-by-Step Explanation for ${queryType}:</strong><br>`;
+
+    const indices = steps.map(step => `BIT[${step.i}]`).join(' + ');
+    const values = steps.map(step => step.val).join(' + ');
+
+    let sum = steps.reduce((acc, step) => acc + step.val, 0);
+
+    if (queryType === "Range Sum") {
+        const l = parseInt(document.getElementById("rangeLeft").value);
+        const r = parseInt(document.getElementById("rangeRight").value);
+
+        // Cập nhật cách tính range sum = prefixSum(r) - prefixSum(l-1)
+        sum = prefixSum(r) - prefixSum(l - 1);  // Range sum = prefixSum(r) - prefixSum(l-1)
+        sumr = prefixSum(r);
+
+        // Hiển thị công thức với dấu trừ chính xác cho BIT[l-1]
+        explanationDiv.innerHTML += `Range sum [${l}, ${r}] = prefixSum(${r}) - prefixSum(${l-1})<br>`;
+
+        // Hiển thị BIT tham gia vào phép tính prefixSum(r)
+        let prefixSumR = "";
+        for (let i = r; i > 0; i -= i & -i) {
+        prefixSumR += `BIT[${i}] + `;
+        }
+        prefixSumR = prefixSumR.slice(0, -2); // Loại bỏ dấu cộng cuối cùng
+
+        // Hiển thị BIT tham gia vào phép tính prefixSum(l-1)
+        let prefixSumL = "";
+        for (let i = l - 1; i > 0; i -= i & -i) {
+        prefixSumL += `BIT[${i}] + `;
+        }
+        prefixSumL = prefixSumL.slice(0, -2); // Loại bỏ dấu cộng cuối cùng
+
+        explanationDiv.innerHTML += `prefixSum(${r}) = ${prefixSumR} = ${sumr}<br>`;
+        explanationDiv.innerHTML += `prefixSum(${l-1}) = ${prefixSumL} = ${prefixSum(l - 1)}<br>`;
+        explanationDiv.innerHTML += `Range sum [${l}, ${r}] = ${prefixSumR} - ${prefixSumL} = ${sum}`;
+    } else if (queryType === "Prefix Sum") {
+        explanationDiv.innerHTML += `${queryType} = ${indices} = ${values} = ${sum}`;
+    }
+
+    selectedIndices = steps.map(step => step.i);
+    }
+
+
+
+
+    function getRange(i) {
+      const lsb = i & -i;
+      const start = i - lsb + 1;
+      const end = i;
+      return `[A[${start}]...A[${end}]]`;
+    }
+  </script>
+</body>
+</html>
